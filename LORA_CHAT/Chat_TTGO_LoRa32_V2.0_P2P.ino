@@ -11,9 +11,6 @@
 #include <LoRa.h>    //https://github.com/sandeepmistry/arduino-LoRa
 #include "BluetoothSerial.h"
 
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
-#endif
 BluetoothSerial SerialBT;
 //Pinout! Customized for TTGO LoRa32 V2.0 Oled Board!
 #define SX1278_SCK  5    // GPIO5  -- SX1278's SCK
@@ -44,13 +41,13 @@ String message = "Hi!";    // send a message
 byte localAddress = 18;    // address of this device
 byte destination = 8;      // destination to send to
 int interval = 2000;       // interval between sends
-String message = "Hello!"; // send a message
+String message = ""; // send a message
 ///////////////////////////////////////////////////////
-
 
 String outgoing;              // outgoing message
 byte msgCount = 0;            // count of outgoing messages
 long lastSendTime = 0;        // last send time
+int cr;
 
 
 void sendMessage(String outgoing) {
@@ -63,9 +60,9 @@ void sendMessage(String outgoing) {
   LoRa.endPacket();                     // finish packet and send it
   
   Serial.println("Sending message " + String(msgCount) + " to address: "+ String(destination));
-  Serial.println("Message: " + message); 
+  Serial.println("Message: " + outgoing); 
   Serial.println();
-  delay(1000);
+  delay(100);
   msgCount++;                           // increment message ID
 }
 
@@ -83,6 +80,7 @@ void onReceive(int packetSize) {
 
   while (LoRa.available()) {            // can't use readString() in callback, so
     incoming += (char)LoRa.read();      // add bytes one by one
+
   }
 
   if (incomingLength != incoming.length()) {   // check length for error
@@ -108,19 +106,20 @@ void onReceive(int packetSize) {
   Serial.println("RSSI: " + String(LoRa.packetRssi()));
   Serial.println("Snr: " + String(LoRa.packetSnr()));
   Serial.println();
-  delay(1000);
-  SerialBT.write(incoming);
+
+  // Manda el mensaje LORA recibido, al terminal Bluetooth ...
+  for (int i = 0;i < incomingLength; i++){ SerialBT.write(incoming[i]); }
   
+   delay(100);
+   
 }
 
 void setup() {
-
-  Serial.begin(115200);                   // initialize serial
-  SerialBT.begin("ESP32test"); //Bluetooth device name
-  Serial.println("The device started, now you can pair it with bluetooth!");
-  delay(1000);
   
+  SerialBT.begin("ESP32test"); //Bluetooth device name
+  Serial.begin(115200); 
   while (!Serial);
+  Serial.println("The device started, now you can pair it with bluetooth!");
   Serial.println("TTGO LoRa32 V2.0 P2P");
 
   SPI.begin(SX1278_SCK, SX1278_MISO, SX1278_MOSI, SX1278_CS);
@@ -128,7 +127,7 @@ void setup() {
   LoRa.setPins(SX1278_CS, SX1278_RST, SX1278_DI0);// set CS, reset, IRQ pin
 
   if (!LoRa.begin(LORA_BAND))
-  {             // initialize ratio at 868 MHz
+  {             
     Serial.println("LoRa init failed. Check your connections.");
 
     while (true);                       // if failed, do nothing
@@ -137,26 +136,28 @@ void setup() {
   //LoRa.onReceive(onReceive);
   LoRa.receive();
   Serial.println("LoRa init succeeded.");
-  delay(1500);
+  delay(500);
 
 }
 
 void loop() {
 
-    LoRa.receive();                     // go back into receive mode
-  
-  int packetSize = LoRa.parsePacket();
-  if (packetSize) { onReceive(packetSize);  }
 
+int BTbyte ;
+                     // go back into receive mode                    Serial.println(message);
 
   if (SerialBT.available()) {
-    Serial.write(SerialBT.read());
-    sendMessage(SerialBT.read());
-  }
-
-
-
+     BTbyte = SerialBT.read();
+     //Serial.println(BTbyte);
+     message = message + char(BTbyte); }
+   
+if (BTbyte == 13) cr = 1;
+if (BTbyte == 10 && cr == 1) { sendMessage(message);  LoRa.receive(); message =""; cr = 0; }
+// Envia el mensaje terminado en 13 10 CRLF por Lora , y pasa e modo recepción.
+int packetSize = LoRa.parsePacket();
+if (packetSize) { onReceive(packetSize); }
 
   
 }
+
 
